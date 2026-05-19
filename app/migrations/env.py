@@ -6,9 +6,9 @@ from sqlalchemy import pool
 from alembic import context
 from app.config import settings
 from app.database import Base
-from app.booking.models import Bookings
+from app.bookings.models import Bookings
 from app.hotels.models import Hotels
-from app.rooms.models import Rooms
+from app.hotels.rooms.models import Rooms
 from app.users.models import Users
 
 # this is the Alembic Config object, which provides

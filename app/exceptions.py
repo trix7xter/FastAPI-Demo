@@ -37,3 +37,8 @@ class IncorrectTokenFormatException(Exception):
 class UserIsNotPresentException(Exception):
     status_code = status.HTTP_401_UNAUTHORIZED
     detail = "Пользователь не найден"
+
+
+class RoomCannotBeBooked(Exception):
+    status_code = status.HTTP_409_CONFLICT
+    detail = "Комната не может быть забронирована"

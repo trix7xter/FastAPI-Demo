@@ -18,15 +18,23 @@
 app/
 ├── config.py             # настройки из .env (BaseSettings)
 ├── database.py           # async engine + Base
-├── exceptions.py         # кастомные HTTP-исключения (BookingException и наследники)
-├── main.py               # FastAPI app, эндпоинты
+├── exceptions.py         # кастомные HTTP-исключения
+├── main.py               # FastAPI app, подключение роутеров
 ├── dao/
-│   └── base.py           # BaseDAO[Model] — generic CRUD
+│   └── base.py           # BaseDAO[Model] — generic CRUD (find_by_id, find_all, add, delete)
 ├── migrations/           # Alembic
 │   ├── env.py
 │   └── versions/
-├── hotels/models.py      # модель Hotels
-├── rooms/models.py       # модель Rooms
+├── hotels/
+│   ├── models.py         # модель Hotels
+│   ├── schemas.py        # SHotel, SHotelInfo
+│   ├── dao.py            # HotelDAO.find_all(location, date_from, date_to)
+│   ├── router.py         # /hotels/{location}, /hotels/id/{id}
+│   └── rooms/
+│       ├── models.py     # модель Rooms
+│       ├── schemas.py    # SRoom, SRoomInfo
+│       ├── dao.py        # RoomDAO.find_all(hotel_id, date_from, date_to)
+│       └── router.py     # /hotels/{hotel_id}/rooms (присоединён к router отелей)
 ├── users/
 │   ├── models.py         # модель Users
 │   ├── schemas.py        # SUserAuth
@@ -34,15 +42,18 @@ app/
 │   ├── auth.py           # хэш паролей, JWT, authenticate_user
 │   ├── dependencies.py   # get_token / get_current_user / get_current_admin_user
 │   └── router.py         # /auth/register, /login, /logout, /me, /all
-└── booking/
+└── bookings/
     ├── models.py         # модель Bookings
-    ├── schemas.py        # SBooking
-    ├── dao.py            # BookingDAO
+    ├── schemas.py        # SBooking, SBookingInfo
+    ├── dao.py            # BookingDAO (add с проверкой свободных номеров, find_all с join к Rooms)
     └── router.py         # /bookings
 alembic.ini
 test_data.sql             # сидовые данные
 .env                      # креды БД и JWT (не коммитится)
 ```
+
+Модели описаны в типизированном стиле SQLAlchemy 2.0 (`Mapped` / `mapped_column`).
+Роутер для `/hotels/{hotel_id}/rooms` не создаёт отдельный `APIRouter`, а импортирует существующий из `app/hotels/router.py` и добавляет эндпоинт к нему — поэтому в `main.py` подключается только `router_hotels`, а модуль `app.hotels.rooms.router` импортируется ради side-effect регистрации.
 
 ## Установка
 
@@ -111,14 +122,19 @@ JWT в httpOnly-cookie + bcrypt-хэш паролей. Кастомные иск
 
 ### Эндпоинты
 
-| Метод | Путь              | Описание                                  |
-|-------|-------------------|-------------------------------------------|
-| POST  | `/auth/register`  | Регистрация — 201 / 409 если email занят  |
-| POST  | `/auth/login`     | Логин — выдаёт JWT в cookie               |
-| POST  | `/auth/logout`    | Сброс cookie                              |
-| GET   | `/auth/me`        | Текущий пользователь                      |
-| GET   | `/auth/all`       | Все пользователи (только админ)           |
-| GET   | `/bookings`       | Список бронирований текущего пользователя |
+| Метод  | Путь                          | Авториз. | Описание                                                                |
+|--------|-------------------------------|----------|-------------------------------------------------------------------------|
+| POST   | `/auth/register`              | —        | Регистрация — 201 / 409 если email занят                                |
+| POST   | `/auth/login`                 | —        | Логин — выдаёт JWT в cookie                                             |
+| POST   | `/auth/logout`                | —        | Сброс cookie                                                            |
+| GET    | `/auth/me`                    | ✓        | Текущий пользователь                                                    |
+| GET    | `/auth/all`                   | админ    | Все пользователи                                                        |
+| GET    | `/hotels/{location}`          | —        | Отели в локации с ≥1 свободным номером в период `date_from..date_to`    |
+| GET    | `/hotels/id/{hotel_id}`       | —        | Конкретный отель по id                                                  |
+| GET    | `/hotels/{hotel_id}/rooms`    | —        | Номера отеля с `total_cost` и `rooms_left` за период                    |
+| GET    | `/bookings`                   | ✓        | Бронирования пользователя (с данными номера)                            |
+| POST   | `/bookings`                   | ✓        | Создать бронь — 409 если номер занят                                    |
+| DELETE | `/bookings/{booking_id}`      | ✓        | Удалить бронь — 204                                                     |
 
 ### Быстрая проверка через curl
 
