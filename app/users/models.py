@@ -10,7 +10,7 @@ class Users(Base):
     email: Mapped[str]
     hashed_password: Mapped[str]
 
-    booking = relationship("Bookings", back_populates="user")
+    booking = relationship("Bookings", back_populates="user", lazy="selectin")
 
     def __str__(self):
         return f"User #{self.id}"

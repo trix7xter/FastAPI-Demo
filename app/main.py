@@ -14,7 +14,8 @@ from app.users.router import router as router_users
 from app.pages.router import router as router_pages
 from app.images.router import router as router_images
 
-from app.admin.views import BookingsAdmin, UserAdmin
+from app.admin.auth import authentication_backend
+from app.admin.views import BookingsAdmin, HotelsAdmin, RoomsAdmin, UserAdmin
 from app.config import settings
 from app.database import engine
 from sqladmin import Admin
@@ -62,7 +63,9 @@ app.add_middleware(
     ],
 )
 
-admin = Admin(app, engine)
+admin = Admin(app, engine, authentication_backend=authentication_backend)
 
 admin.add_view(UserAdmin)
 admin.add_view(BookingsAdmin)
+admin.add_view(HotelsAdmin)
+admin.add_view(RoomsAdmin)

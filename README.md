@@ -17,6 +17,7 @@
 - **Pillow** — обработка изображений
 - **python-jose** — JWT
 - **passlib + bcrypt** — хэширование паролей
+- **pytest + pytest-asyncio + httpx** — автотесты (unit + integration на отдельной TEST-БД)
 
 ## Структура
 
@@ -65,10 +66,18 @@ app/
 │   └── email_templates.py
 ├── templates/
 │   └── hotels.html       # Jinja-шаблон страницы списка отелей
-└── static/
-    └── images/           # отдаётся через /static, сюда падают результаты ресайза
+├── static/
+│   └── images/           # отдаётся через /static, сюда падают результаты ресайза
+├── conftest.py           # выставляет MODE=TEST до импорта settings
+└── tests/
+    ├── conftest.py       # фикстуры: prepare_database, ac, authenticated_ac, session
+    ├── mock_*.json       # сидовые данные для TEST-БД
+    ├── unit_tests/       # быстрые DAO-тесты (без HTTP)
+    └── integration_tests/ # HTTP-тесты через httpx.AsyncClient + ASGITransport
 alembic.ini
-test_data.sql             # сидовые данные
+pytest.ini                # pythonpath, asyncio_mode=auto, session-scope loop
+create_admin.py           # одноразовое создание админ-пользователя
+test_data.sql             # сидовые данные для DEV-БД
 .env                      # креды БД, JWT, SMTP, Redis (не коммитится)
 ```
 
@@ -83,7 +92,7 @@ source venv/bin/activate
 pip install fastapi "uvicorn[standard]" sqlalchemy asyncpg psycopg2-binary \
             alembic 'pydantic[email]' pydantic-settings greenlet \
             'python-jose[cryptography]' 'passlib[bcrypt]' 'bcrypt==4.0.1' \
-            redis fastapi-cache2 celery sqladmin jinja2 pillow python-multipart
+            redis fastapi-cache2 celery sqladmin itsdangerous jinja2 pillow python-multipart
 ```
 
 > `bcrypt` пинится на `4.0.1` из-за известной несовместимости `passlib 1.7.4` с `bcrypt>=4.1` (валится с `AttributeError: __about__`).
@@ -98,6 +107,14 @@ DB_PORT=5432
 DB_USER=postgres
 DB_PASS=
 DB_NAME=postgres
+
+MODE=DEV
+
+TEST_DB_HOST=localhost
+TEST_DB_PORT=5432
+TEST_DB_USER=postgres
+TEST_DB_PASS=
+TEST_DB_NAME=test_booking_db
 
 SECRET_KEY=your-very-secret-key
 ALGORITHM=HS256
@@ -182,8 +199,60 @@ Celery-приложение — `app/tasks/celery.py`, брокер — Redis (`
 
 - `UserAdmin` — список юзеров, `hashed_password` скрыт в детальном виде, удаление запрещено (`can_delete = False`).
 - `BookingsAdmin` — все колонки + связь с пользователем (`relationship` обоюдный: `Users.booking` ↔ `Bookings.user`).
+- `HotelsAdmin` / `RoomsAdmin` — отели и номера со связями `Hotels.rooms`, `Rooms.hotel`, `Rooms.booking`.
 
-Доступна на `/admin` без авторизации (на текущий момент `Authentication` для sqladmin не настроен).
+Аутентификация поверх sqladmin реализована в `app/admin/auth.py` (`AdminAuth(AuthenticationBackend)`), переиспользует `authenticate_user` и `get_current_user` из `app/users`. Токен кладётся в сессию sqladmin (`secret_key=settings.SECRET_KEY`).
+
+Создать админ-пользователя можно одноразовым скриптом:
+
+```bash
+python create_admin.py
+```
+
+После этого можно зайти на <http://127.0.0.1:8000/admin> с дефолтными кредами:
+
+| email             | password |
+|-------------------|----------|
+| `admin@admin.com` | `admin`  |
+
+> Сейчас в админку залогинится любой зарегистрированный юзер (`get_current_admin_user` ещё не проверяет роль — соответствующая ветка закомментирована в `app/users/dependencies.py`).
+
+## Тесты
+
+Стек — `pytest` + `pytest-asyncio` (`asyncio_mode=auto`) + `httpx.AsyncClient` поверх `ASGITransport` (in-process, без поднятия сервера).
+
+Тесты ходят в отдельную БД из `TEST_DB_*` (см. `.env`). Переключение делает `app/conftest.py` — он выставляет `MODE=TEST` до первого импорта `app.config`, а `app/database.py` под этим режимом берёт `TEST_DATABASE_URL` и `NullPool` (чтобы пул соединений не оставался между прогонами).
+
+Сидовые данные лежат в `app/tests/mock_*.json` и заливаются session-scope autouse-фикстурой `prepare_database` (`drop_all` → `create_all` → `INSERT`). После bulk-insert вручную сдвигаются Postgres `SERIAL`-последовательности (`setval(pg_get_serial_sequence(...))`) — иначе следующий `INSERT` из API упирается в дубликат `id=1`.
+
+Особенности фикстур (`app/tests/conftest.py`):
+
+- `ac` — анонимный `AsyncClient`.
+- `authenticated_ac` — логинится `test@test.com` / `test` и работает с `access_token` в cookie.
+- `session` — открывает `async_session_maker` напрямую для DAO-тестов.
+- `_disable_celery_tasks` (autouse) — monkey-patch `send_booking_confirmation_email.delay → no-op`, чтобы тесты не дёргали Redis-брокер и SMTP.
+
+Подготовка тестовой БД (один раз):
+
+```bash
+createdb -U postgres test_booking_db
+```
+
+Запуск:
+
+```bash
+pytest                                            # все тесты
+pytest app/tests/unit_tests                       # только unit
+pytest app/tests/integration_tests/test_bookings  # подкаталог
+pytest -k booking -vv                             # по имени
+```
+
+Покрытие:
+
+- `unit_tests/test_users/test_dao.py` — `UsersDao.find_by_id` на сидовых юзерах + отсутствующем id.
+- `integration_tests/test_bookings/test_dao.py` — `BookingDAO.add` + `find_by_id`.
+- `integration_tests/test_bookings/test_api.py` — параметризированный `POST /bookings` (8 успешных + 9-й 409 по исчерпанию `quantity`) с проверкой `GET /bookings`.
+- `integration_tests/test_users/test_api.py` — регистрация (201/409/422) и логин (200/401).
 
 ## Статика и шаблоны
 

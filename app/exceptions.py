@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 
 
-class Exception(HTTPException):
+class BookingException(HTTPException):
     status_code = 500
     detail = ""
 
@@ -9,36 +9,36 @@ class Exception(HTTPException):
         super().__init__(status_code=self.status_code, detail=self.detail)
 
 
-class UserAlreadyExistsException(Exception):
+class UserAlreadyExistsException(BookingException):
     status_code = status.HTTP_409_CONFLICT
     detail = "Пользователь уже существует"
 
 
-class IncorrectEmailOrPasswordException(Exception):
+class IncorrectEmailOrPasswordException(BookingException):
     status_code = status.HTTP_401_UNAUTHORIZED
     detail = "Неверная почта или пароль"
 
 
-class TokenExpiredException(Exception):
+class TokenExpiredException(BookingException):
     status_code = status.HTTP_401_UNAUTHORIZED
     detail = "Срок действия токена истёк"
 
 
-class TokenAbsentException(Exception):
+class TokenAbsentException(BookingException):
     status_code = status.HTTP_401_UNAUTHORIZED
     detail = "Токен отсутствует"
 
 
-class IncorrectTokenFormatException(Exception):
+class IncorrectTokenFormatException(BookingException):
     status_code = status.HTTP_401_UNAUTHORIZED
     detail = "Некорректный формат токена"
 
 
-class UserIsNotPresentException(Exception):
+class UserIsNotPresentException(BookingException):
     status_code = status.HTTP_401_UNAUTHORIZED
     detail = "Пользователь не найден"
 
 
-class RoomCannotBeBooked(Exception):
+class RoomCannotBeBooked(BookingException):
     status_code = status.HTTP_409_CONFLICT
     detail = "Комната не может быть забронирована"
