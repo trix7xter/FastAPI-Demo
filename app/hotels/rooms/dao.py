@@ -36,8 +36,8 @@ class RoomDAO(BaseDAO):
             rooms_left = Rooms.quantity - func.coalesce(booked_rooms.c.cnt, 0)
 
             query = (
-                select(
-                    Rooms.__table__.columns,
+                select(  # pyright: ignore[reportCallIssue]
+                    Rooms.__table__.columns,  # pyright: ignore[reportArgumentType]
                     (Rooms.price * days).label("total_cost"),
                     rooms_left.label("rooms_left"),
                 )

@@ -50,8 +50,8 @@ class HotelDAO(BaseDAO):
             )
 
             query = (
-                select(
-                    Hotels.__table__.columns,
+                select(  # pyright: ignore[reportCallIssue]
+                    Hotels.__table__.columns,  # pyright: ignore[reportArgumentType]
                     rooms_left.label("rooms_left"),
                 )
                 .join(

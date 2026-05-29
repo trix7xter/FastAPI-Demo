@@ -3,17 +3,18 @@
 Usage:
     python create_admin.py
 """
+
 import asyncio
 
 from sqlalchemy import select
 
-from app.database import async_session_maker
-from app.users.auth import get_password_hash
-from app.users.models import Users
 # Import all models so SQLAlchemy can resolve cross-module relationships
 from app.bookings.models import Bookings  # noqa: F401
+from app.database import async_session_maker
 from app.hotels.models import Hotels  # noqa: F401
 from app.hotels.rooms.models import Rooms  # noqa: F401
+from app.users.auth import get_password_hash
+from app.users.models import Users
 
 ADMIN_EMAIL = "admin@admin.com"
 ADMIN_PASSWORD = "admin"

@@ -5,6 +5,7 @@
 ## Стек
 
 - **FastAPI** — веб-фреймворк
+- **fastapi-versioning** — версионирование API (`/v1`, `/latest`, отдельные docs на версию)
 - **SQLAlchemy 2.x (async)** — ORM, драйвер `asyncpg`
 - **Alembic** — миграции (через синхронный `psycopg2`)
 - **Pydantic v2 / pydantic-settings** — настройки и валидация
@@ -26,7 +27,7 @@ app/
 ├── config.py             # настройки из .env (BaseSettings)
 ├── database.py           # async engine + Base
 ├── exceptions.py         # кастомные HTTP-исключения
-├── main.py               # FastAPI app, подключение роутеров
+├── main.py               # FastAPI app, подключение роутеров, обёртка VersionedFastAPI (/v1)
 ├── dao/
 │   └── base.py           # BaseDAO[Model] — generic CRUD (find_by_id, find_all, add, delete)
 ├── migrations/           # Alembic
@@ -92,7 +93,8 @@ source venv/bin/activate
 pip install fastapi "uvicorn[standard]" sqlalchemy asyncpg psycopg2-binary \
             alembic 'pydantic[email]' pydantic-settings greenlet \
             'python-jose[cryptography]' 'passlib[bcrypt]' 'bcrypt==4.0.1' \
-            redis fastapi-cache2 celery sqladmin itsdangerous jinja2 pillow python-multipart
+            redis fastapi-cache2 celery sqladmin itsdangerous jinja2 pillow python-multipart \
+            fastapi-versioning
 ```
 
 > `bcrypt` пинится на `4.0.1` из-за известной несовместимости `passlib 1.7.4` с `bcrypt>=4.1` (валится с `AttributeError: __about__`).
@@ -166,10 +168,11 @@ Celery-воркер (в отдельном терминале — нужен, ч
 celery -A app.tasks.celery:celery worker --loglevel=INFO
 ```
 
-- Swagger UI — <http://127.0.0.1:8000/docs>
+- Swagger UI (v1) — <http://127.0.0.1:8000/v1/docs>
+- Корневой Swagger со ссылками на версии — <http://127.0.0.1:8000/docs>
 - ReDoc — <http://127.0.0.1:8000/redoc>
-- Админка SQLAdmin — <http://127.0.0.1:8000/admin>
-- Страница отелей (Jinja) — <http://127.0.0.1:8000/pages/hotels?location=...&date_from=...&date_to=...>>
+- Админка SQLAdmin (без версии) — <http://127.0.0.1:8000/admin>
+- Страница отелей (Jinja) — <http://127.0.0.1:8000/v1/pages/hotels?location=...&date_from=...&date_to=...>>
 
 ## Модели
 
@@ -184,14 +187,14 @@ JWT в httpOnly-cookie + bcrypt-хэш паролей. Кастомные иск
 
 ## Кеширование
 
-`GET /hotels/{location}` обёрнут `@cache(expire=30)` из `fastapi-cache2`. Бэкенд кеша — Redis, инициализируется в lifespan FastAPI (`RedisBackend` поверх `redis.asyncio`).
+`GET /v1/hotels/{location}` обёрнут `@cache(expire=30)` из `fastapi-cache2`. Бэкенд кеша — Redis, инициализируется в lifespan FastAPI (`RedisBackend` поверх `redis.asyncio`). lifespan передаётся в родительское `VersionedFastAPI`, поэтому кеш инициализируется один раз и доступен всем версиям.
 
 ## Фоновые задачи (Celery)
 
 Celery-приложение — `app/tasks/celery.py`, брокер — Redis (`REDIS_HOST`/`REDIS_PORT`). Задачи:
 
-- `send_booking_confirmation_email(booking, email_to)` — отправляет письмо через SMTP (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`). Шаблон — `app/tasks/email_templates.py`. Ставится из `POST /bookings` после успешной брони.
-- `process_pic(path)` — открывает картинку через Pillow, сохраняет варианты `1000×500` и `200×100` в `app/static/images/`. Ставится из `POST /images/hotels`.
+- `send_booking_confirmation_email(booking, email_to)` — отправляет письмо через SMTP (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`). Шаблон — `app/tasks/email_templates.py`. Ставится из `POST /v1/bookings` после успешной брони.
+- `process_pic(path)` — открывает картинку через Pillow, сохраняет варианты `1000×500` и `200×100` в `app/static/images/`. Ставится из `POST /v1/images/hotels`.
 
 ## Админка
 
@@ -251,7 +254,7 @@ pytest -k booking -vv                             # по имени
 
 - `unit_tests/test_users/test_dao.py` — `UsersDao.find_by_id` на сидовых юзерах + отсутствующем id.
 - `integration_tests/test_bookings/test_dao.py` — `BookingDAO.add` + `find_by_id`.
-- `integration_tests/test_bookings/test_api.py` — параметризированный `POST /bookings` (8 успешных + 9-й 409 по исчерпанию `quantity`) с проверкой `GET /bookings`.
+- `integration_tests/test_bookings/test_api.py` — параметризированный `POST /v1/bookings` (8 успешных + 9-й 409 по исчерпанию `quantity`) с проверкой `GET /v1/bookings`.
 - `integration_tests/test_users/test_api.py` — регистрация (201/409/422) и логин (200/401).
 
 ## Статика и шаблоны
@@ -263,7 +266,30 @@ pytest -k booking -vv                             # по имени
 
 В `main.py` подключён `CORSMiddleware` для `http://localhost:3000` (на случай отдельного фронта). Разрешены методы `GET/POST/OPTIONS/DELETE/PATCH/PUT` и заголовки для куки/авторизации.
 
+## Версионирование API
+
+API обёрнут в `VersionedFastAPI` из `fastapi-versioning` (`app/main.py`). Базовое приложение собирает все роутеры, после чего оборачивается в версионированное:
+
+- Эндпоинты без явного `@version(...)` попадают в **`default_version=(1, 0)`**, поэтому весь текущий API доступен под префиксом **`/v1`**.
+- **`/latest`** — алиас на самую свежую версию.
+- У каждой версии своя изолированная документация: **`/v1/docs`** и схема **`/v1/openapi.json`**. Корневой `/docs` показывает ссылки на версии.
+- `lifespan`, `CORSMiddleware`, замер времени запроса, `/static` и админка sqladmin навешиваются на **родительское** приложение уже после сборки — версионер копирует только `APIRoute`, поэтому `Mount`-объекты (static, admin) и middleware нужно подключать к результату.
+
+Добавить новую версию эндпоинта:
+
+```python
+from fastapi_versioning import version
+
+@router.get("/me")
+@version(2, 0)          # уедет под /v2/auth/me и в /latest
+async def read_users_me_v2(...): ...
+```
+
+Эндпоинты без `@version` остаются в `/v1`; помеченные `@version(2, 0)` автоматически появляются под `/v2`.
+
 ### Эндпоинты
+
+Все пути в таблице ниже доступны под префиксом **`/v1`** (и алиасом `/latest`), например `POST /v1/auth/login`. Без версии остаются служебные маршруты: `/admin`, `/static`, корневой `/docs`, `/redoc`.
 
 | Метод  | Путь                          | Авториз. | Описание                                                                |
 |--------|-------------------------------|----------|-------------------------------------------------------------------------|
@@ -280,22 +306,22 @@ pytest -k booking -vv                             # по имени
 | DELETE | `/bookings/{booking_id}`      | ✓        | Удалить бронь — 204                                                     |
 | POST   | `/images/hotels?name={id}`    | —        | Загрузить картинку отеля, кладёт оригинал в `app/static/images` и ставит celery-таск ресайза (1000×500 и 200×100) |
 | GET    | `/pages/hotels`               | —        | HTML-страница со списком отелей (Jinja, переиспользует `get_hotels_by_location`) |
-| GET    | `/admin`                      | —        | Админ-панель SQLAdmin (Users, Bookings)                                  |
+| GET    | `/admin`                      | —        | Админ-панель SQLAdmin (Users, Bookings) — **без префикса `/v1`**          |
 
 ### Быстрая проверка через curl
 
 ```bash
 # регистрация
-curl -i -X POST http://127.0.0.1:8000/auth/register \
+curl -i -X POST http://127.0.0.1:8000/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"test@test.com","password":"12345"}'
 
 # логин (-c сохранит cookie)
-curl -i -X POST http://127.0.0.1:8000/auth/login \
+curl -i -X POST http://127.0.0.1:8000/v1/auth/login \
   -c cookies.txt \
   -H "Content-Type: application/json" \
   -d '{"email":"test@test.com","password":"12345"}'
 
 # защищённый эндпоинт (-b пошлёт cookie)
-curl -i http://127.0.0.1:8000/bookings -b cookies.txt
+curl -i http://127.0.0.1:8000/v1/bookings -b cookies.txt
 ```

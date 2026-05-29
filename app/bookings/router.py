@@ -29,8 +29,8 @@ async def add_booking(
     if not booking:
         raise RoomCannotBeBooked
     booking_dict = parse_obj_as(SBooking, booking).dict()
-    # Celery's @task decorator has no return-type annotation, so Pylance can't see .delay on the resulting Task
-    send_booking_confirmation_email.delay(booking_dict, user.email)  # pyright: ignore[reportFunctionMemberAccess]
+    # Celery @task lacks return-type annotation, hiding .delay from type checkers
+    send_booking_confirmation_email.delay(booking_dict, user.email)  # pyright: ignore
     return booking
 
 

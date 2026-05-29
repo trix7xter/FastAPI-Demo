@@ -1,5 +1,5 @@
-from httpx import AsyncClient
 import pytest
+from httpx import AsyncClient
 
 
 @pytest.mark.parametrize(
@@ -25,12 +25,12 @@ async def test_add_and_get_booking(
     authenticated_ac: AsyncClient,
 ):
     response = await authenticated_ac.post(
-        "/bookings",
+        "/v1/bookings",
         params={"room_id": room_id, "date_from": date_from, "date_to": date_to},
     )
 
     assert response.status_code == status_code
 
-    response = await authenticated_ac.get("/bookings")
+    response = await authenticated_ac.get("/v1/bookings")
 
     assert len(response.json()) == booked_rooms

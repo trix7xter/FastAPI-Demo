@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str
 
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
     @property
     def DATABASE_URL(self) -> str:
         return (
@@ -58,4 +60,4 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 
 
-settings = Settings()
+settings = Settings()  # pyright: ignore[reportCallIssue]  # values loaded from .env

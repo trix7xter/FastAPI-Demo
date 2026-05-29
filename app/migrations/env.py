@@ -1,15 +1,15 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
+from sqlalchemy import engine_from_config, pool
+
+# Model imports are required so Alembic autogenerate can discover them via Base.metadata
+from app.bookings.models import Bookings  # noqa: F401
 from app.config import settings
 from app.database import Base
-from app.bookings.models import Bookings
-from app.hotels.models import Hotels
-from app.hotels.rooms.models import Rooms
-from app.users.models import Users
+from app.hotels.models import Hotels  # noqa: F401
+from app.hotels.rooms.models import Rooms  # noqa: F401
+from app.users.models import Users  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

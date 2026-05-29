@@ -1,0 +1,41 @@
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.venv
+  | venv
+  | \.git
+  | __pycache__
+  | migrations
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_first_party = ["app"]
+skip = ["venv", ".venv", "build", "dist", "app/migrations"]
+
+[tool.autoflake]
+remove-all-unused-imports = true
+remove-unused-variables = true
+ignore-init-module-imports = true
+
+[tool.pyright]
+include = ["app", "create_admin.py"]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "venv",
+    ".venv",
+    "app/migrations/versions",
+]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingImports = "warning"
+reportMissingTypeStubs = false

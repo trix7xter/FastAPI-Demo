@@ -1,5 +1,5 @@
-from httpx import AsyncClient
 import pytest
+from httpx import AsyncClient
 
 
 @pytest.mark.parametrize(
@@ -12,7 +12,7 @@ import pytest
 )
 async def test_register_user(email, password, status_code, ac: AsyncClient):
     response = await ac.post(
-        "/auth/register", json={"email": email, "password": password}
+        "/v1/auth/register", json={"email": email, "password": password}
     )
 
     assert response.status_code == status_code
@@ -28,7 +28,7 @@ async def test_register_user(email, password, status_code, ac: AsyncClient):
 )
 async def test_login_user(email, password, status_code, ac: AsyncClient):
     response = await ac.post(
-        "/auth/login", json={"email": email, "password": password}
+        "/v1/auth/login", json={"email": email, "password": password}
     )
 
     assert response.status_code == status_code
