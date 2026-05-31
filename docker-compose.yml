@@ -1,0 +1,90 @@
+services:
+  db:
+    image: postgres:15
+    container_name: booking_db
+    env_file:
+      - .env-non-dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - 5433:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: booking_redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  booking:
+    image: booking_image
+    build:
+      context: .
+    container_name: booking_app
+    env_file:
+      - .env-non-dev
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["/booking/docker/app.sh"]
+    ports:
+      - 9000:8000
+
+  celery:
+    image: booking_image
+    build:
+      context: .
+    container_name: booking_celery
+    env_file:
+      - .env-non-dev
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["/booking/docker/celery.sh", "celery"]
+
+  flower:
+    image: booking_image
+    build:
+      context: .
+    container_name: booking_flower
+    env_file:
+      - .env-non-dev
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["/booking/docker/celery.sh", "flower"]
+    ports:
+      - 5555:5555
+
+  prometheus:
+    image: prom/prometheus:v2.43.0
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+    ports:
+      - 9090:9090
+
+  grafana:
+    image: grafana/grafana:9.4.7
+    container_name: grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    ports:
+      - 3000:3000
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,26 @@
+# .dockerignore — list of things NOT to copy into the Docker image.
+# Keeps the image small and avoids leaking local files/secrets.
+
+# Local virtual environment and Python caches (rebuilt inside the image)
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Local secrets — the image uses .env-non-dev instead, not the dev .env
+.env
+
+# Git internals and metadata
+.git/
+.gitignore
+
+# OS / editor junk
+.DS_Store
+.idea/
+.vscode/
+
+# Docs and leftover backups not needed at runtime
+README.md
+*.bak

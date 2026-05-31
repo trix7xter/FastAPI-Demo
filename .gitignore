@@ -35,3 +35,6 @@ app/migrations/versions/__pycache__/
 
 # Logs
 *.log
+
+# Docker env with secrets (do NOT commit)
+.env-non-dev
